@@ -1,6 +1,6 @@
 {
   "name": "picktgz",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Download tgz files from package-lock.json or yarn.lock",
   "main": "index.js",
   "scripts": {
