@@ -4,7 +4,7 @@
   "description": "Download tgz files from package-lock.json or yarn.lock",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node ./index.js"
   },
   "bin": {
     "picktgz": "./index.js"

@@ -5,7 +5,6 @@ const path = require('path');
 const https = require('https');
 const yargs = require('yargs');
 const parseYarnLock = require('@yarnpkg/lockfile').parse;
-
 // 解析命令行参数
 const argv = yargs
     .usage('Usage: $0 [lock-file] [--add-sh]')
@@ -47,43 +46,57 @@ function getResolvedUrl(lockFilePath) {
 
     if (lockFilePath.endsWith('package-lock.json')) {
         const packageLock = JSON.parse(fileContent);
-        const resolvedList = Object.values(packageLock.packages)
-            .filter(pkg => pkg.resolved)
-            .map(pkg => pkg.resolved);
+        const resolvedList = Object.entries(packageLock.packages)
+            .filter(([_, pkg]) => pkg.resolved)
+            .map(([pkgPath, pkg]) => {
+                const pkgName = getFileName(pkgPath, pkg)
+                return [pkgName, pkg.resolved]
+            });
         return resolvedList;
     } else if (lockFilePath.endsWith('yarn.lock')) {
         const yarnLock = parseYarnLock(fileContent);
-        const resolvedList = Object.values(yarnLock.object)
-            .filter(pkg => pkg.resolved)
-            .map(pkg => pkg.resolved);
+        const resolvedList = Object.entries(yarnLock.object)
+            .filter(([_, pkg]) => pkg.resolved)
+            .map(([pkgPath, pkg]) => {
+                const pkgName = getFileName(pkgPath, pkg, true)
+                return [pkgName, pkg.resolved]
+            });
         return resolvedList;
     } else {
         throw new Error('Unsupported lock file format. Only package-lock.json and yarn.lock are supported.');
     }
 }
 
+// 获取文件名称
+function getFileName(pkgPath, pkg, fromYarn = false) {
+    let pkgName = pkgPath.split('node_modules/').pop();
+    pkgName = pkgName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+    if (fromYarn) {
+        const regex = /(.*)@/;
+        pkgName = regex.test(pkgName) ? pkgName.match(regex)[1] : pkgName;
+    }
+    const pkgVersion = pkg.version;
+    return `${pkgName}-${pkgVersion}.tgz`;
+}
 
 // 下载文件
-async function download(url, filePath) {
+async function download(url, filePath, pkgName) {
     return new Promise((resolve, reject) => {
-        const fileName = path.basename(url);
         if (fs.existsSync(filePath)) {
-            console.log(`File ${fileName} already exists in filelist folder. Skipping download.`);
+            console.log(`File ${pkgName} already exists in filelist folder. Skipping download.`);
             resolve();
             return;
         }
-
         const file = fs.createWriteStream(filePath);
-
         https.get(url, (response) => {
             response.pipe(file);
             file.on('finish', () => {
                 file.close();
-                console.log(`File ${fileName} downloaded successfully.`);
+                console.log(`File ${pkgName} downloaded successfully.`);
                 resolve();
             });
         }).on('error', (error) => {
-            console.error(`Error downloading file ${fileName}: ${error.message}`);
+            console.error(`Error downloading file ${pkgName}: ${error.message}`);
             reject(error);
         });
     });
@@ -95,15 +108,16 @@ async function getTgz(list) {
     if (!fs.existsSync(modulesDir)) {
         fs.mkdirSync(modulesDir);
     }
-
-    for (const url of list) {
-        const fileName = url.split('/').pop();
-        const filePath = path.join(modulesDir, fileName);
-
+    let totalDownloaded = 0;
+    const totalSize = list.length;
+    for (const [pkgName, pkgUrl] of list) {
+        const filePath = path.join(modulesDir, pkgName);
         try {
-            await download(url, filePath);
+            await download(pkgUrl, filePath, pkgName);
+            totalDownloaded++;
+            console.log(`[${totalDownloaded}/${totalSize}] Downloaded ${pkgName}`);
         } catch (error) {
-            console.error(`Error downloading ${fileName}: ${error.message}`);
+            console.error(`Error downloading ${pkgName}: ${error.message}`);
         }
     }
     return modulesDir;
@@ -136,5 +150,4 @@ async function main() {
         console.error(`Error in main function: ${error.message}`);
     }
 }
-
 main();
