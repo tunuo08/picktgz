@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
+const axios = require('axios');
 const yargs = require('yargs');
 const parseYarnLock = require('@yarnpkg/lockfile').parse;
 // 解析命令行参数
@@ -88,17 +88,21 @@ async function download(url, filePath, pkgName) {
             return;
         }
         const file = fs.createWriteStream(filePath);
-        https.get(url, (response) => {
-            response.pipe(file);
-            file.on('finish', () => {
-                file.close();
-                console.log(`File ${pkgName} downloaded successfully.`);
-                resolve();
-            });
-        }).on('error', (error) => {
-            console.error(`Error downloading file ${pkgName}: ${error.message}`);
-            reject(error);
-        });
+         axios({
+            method: 'GET',
+            url: url,
+            responseType: 'stream',
+        }).then((response) => {
+             response.data.pipe(file);
+             file.on('finish', () => {
+                 file.close();
+                 console.log(`File ${pkgName} downloaded successfully.`);
+                 resolve();
+             });
+         }).catch(error=>{
+             console.error(`Error downloading file ${pkgName}: ${error.message}`);
+             reject(error);
+         })
     });
 }
 
@@ -150,4 +154,5 @@ async function main() {
         console.error(`Error in main function: ${error.message}`);
     }
 }
+
 main();
